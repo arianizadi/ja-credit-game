@@ -11,9 +11,10 @@ interface Simple3DCardProps {
   card: CreditCard;
   isSelected: boolean;
   onClick: () => void;
+  getCurrentBalance?: (card: CreditCard) => number;
 }
 
-function Card3D({ card, isSelected }: { card: CreditCard; isSelected: boolean }) {
+function Card3D({ card, isSelected, getCurrentBalance }: { card: CreditCard; isSelected: boolean; getCurrentBalance?: (card: CreditCard) => number }) {
   const meshRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
@@ -48,7 +49,6 @@ function Card3D({ card, isSelected }: { card: CreditCard; isSelected: boolean })
         color="white"
         anchorX="center"
         anchorY="middle"
-        font="/fonts/bold.woff"
       >
         {card.name}
       </Text>
@@ -59,9 +59,8 @@ function Card3D({ card, isSelected }: { card: CreditCard; isSelected: boolean })
         color="white"
         anchorX="center"
         anchorY="middle"
-        font="/fonts/bold.woff"
       >
-        ${Math.round(card.balance)}
+        ${getCurrentBalance ? getCurrentBalance(card) : Math.round(card.balance)}
       </Text>
 
       <Text
@@ -87,7 +86,7 @@ function Card3D({ card, isSelected }: { card: CreditCard; isSelected: boolean })
   );
 }
 
-export const Simple3DCard = ({ card, isSelected, onClick }: Simple3DCardProps) => {
+export const Simple3DCard = ({ card, isSelected, onClick, getCurrentBalance }: Simple3DCardProps) => {
   const priority = card.interestRate >= 20 ? '🔥 HIGH' : card.interestRate >= 15 ? '⚠️ MEDIUM' : '✅ LOW';
 
   return (
@@ -126,7 +125,7 @@ export const Simple3DCard = ({ card, isSelected, onClick }: Simple3DCardProps) =
           {/* Main Balance */}
           <div className="bg-white/10 rounded-lg p-2 sm:p-3 text-center">
             <div className="text-xs sm:text-sm opacity-90">You Owe</div>
-            <div className="text-xl sm:text-2xl font-bold">${Math.round(card.balance)}</div>
+            <div className="text-xl sm:text-2xl font-bold">${getCurrentBalance ? getCurrentBalance(card) : Math.round(card.balance)}</div>
           </div>
 
           {/* Interest and Min Payment */}

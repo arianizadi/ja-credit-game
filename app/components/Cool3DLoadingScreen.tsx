@@ -49,7 +49,6 @@ function LoadingProgress({ progress }: { progress: number }) {
         color="#1f2937"
         anchorX="center"
         anchorY="middle"
-        font="/fonts/bold.woff"
       >
         {Math.round(progress)}%
       </Text>

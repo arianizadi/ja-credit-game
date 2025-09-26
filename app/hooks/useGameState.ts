@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { CreditCard, GameState, PaymentAction, PaymentLogEntry, DailySnapshot } from '../types';
 
 const INITIAL_CARDS: CreditCard[] = [
@@ -9,7 +9,7 @@ const INITIAL_CARDS: CreditCard[] = [
     name: 'Visa Card',
     balance: 600,
     limit: 3000,
-    interestRate: 18.99,
+    interestRate: 19,
     minimumPayment: 25,
     dueDate: 15,
     color: '#1a365d',
@@ -19,7 +19,7 @@ const INITIAL_CARDS: CreditCard[] = [
     name: 'MasterCard',
     balance: 400,
     limit: 2000,
-    interestRate: 22.99,
+    interestRate: 23,
     minimumPayment: 20,
     dueDate: 5,
     color: '#e53e3e',
@@ -29,7 +29,7 @@ const INITIAL_CARDS: CreditCard[] = [
     name: 'Discover Card',
     balance: 300,
     limit: 1500,
-    interestRate: 15.99,
+    interestRate: 16,
     minimumPayment: 15,
     dueDate: 25,
     color: '#38a169',
@@ -50,7 +50,7 @@ const calculateNextPayDay = (currentDay: number): number => {
 };
 
 const calculateNextDueDate = (cards: CreditCard[], currentDay: number): number => {
-  const currentDayOfMonth = currentDay % 30;
+  const currentDayOfMonth = ((currentDay - 1) % 30) + 1;
   let nextDue = Infinity;
 
   for (const card of cards) {
@@ -59,7 +59,7 @@ const calculateNextDueDate = (cards: CreditCard[], currentDay: number): number =
       if (cardDueDay <= currentDayOfMonth) {
         cardDueDay += 30; // Next month
       }
-      const fullDueDate = Math.floor(currentDay / 30) * 30 + cardDueDay;
+      const fullDueDate = Math.floor((currentDay - 1) / 30) * 30 + cardDueDay;
       if (fullDueDate < nextDue) {
         nextDue = fullDueDate;
       }
@@ -69,10 +69,18 @@ const calculateNextDueDate = (cards: CreditCard[], currentDay: number): number =
   return nextDue === Infinity ? currentDay + 30 : nextDue;
 };
 
+// Helper function to calculate current balance including accrued interest
+const calculateCurrentBalance = (card: CreditCard, currentDay: number): number => {
+  const daysElapsed = card.lastPaymentDate ? currentDay - card.lastPaymentDate : Math.max(0, currentDay - 1);
+  const dailyInterestRate = card.interestRate / 100 / 365;
+  const interestAccrued = Math.round(card.balance * dailyInterestRate * daysElapsed);
+  return Math.round(card.balance + interestAccrued);
+};
+
 // Helper function to create daily snapshot
 const createDailySnapshot = (gameState: GameState): DailySnapshot => {
-  const totalBalance = gameState.cards.reduce((sum, card) => sum + card.balance, 0);
-  const cardsRemaining = gameState.cards.filter(card => card.balance > 1).length; // > 1 to account for rounding
+  const totalBalance = Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0));
+  const cardsRemaining = gameState.cards.filter(card => Math.round(card.balance) > 0).length;
 
   return {
     day: gameState.currentDay,
@@ -84,6 +92,23 @@ const createDailySnapshot = (gameState: GameState): DailySnapshot => {
 
 export const useGameState = () => {
   const [gameState, setGameState] = useState<GameState>(() => {
+    // Try to load from localStorage first
+    if (typeof window !== 'undefined') {
+      try {
+        const savedState = localStorage.getItem('creditGameState');
+        if (savedState) {
+          const parsed = JSON.parse(savedState);
+          // Validate that the saved state has the required structure
+          if (parsed && parsed.cards && parsed.currentDay !== undefined) {
+            return parsed;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load game state from localStorage:', error);
+      }
+    }
+
+    // If no saved state or loading failed, create initial state
     const initialState: GameState = {
       cards: INITIAL_CARDS,
       currentDay: 1,
@@ -108,22 +133,45 @@ export const useGameState = () => {
     return initialState;
   });
 
+  // Save game state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('creditGameState', JSON.stringify(gameState));
+      } catch (error) {
+        console.warn('Failed to save game state to localStorage:', error);
+      }
+    }
+  }, [gameState]);
+
   const makePayment = useCallback((cardId: string, amount: number) => {
     setGameState(prev => {
       const targetCard = prev.cards.find(card => card.id === cardId);
       if (!targetCard) return prev;
 
       // Calculate interest accrued since last payment
-      const daysElapsed = targetCard.lastPaymentDate ? prev.currentDay - targetCard.lastPaymentDate : prev.currentDay;
+      const daysElapsed = targetCard.lastPaymentDate ? prev.currentDay - targetCard.lastPaymentDate : Math.max(0, prev.currentDay - 1);
       const dailyInterestRate = targetCard.interestRate / 100 / 365;
-      const interestAccrued = targetCard.balance * dailyInterestRate * daysElapsed;
+      const interestAccrued = Math.round(targetCard.balance * dailyInterestRate * daysElapsed);
+
+      console.log(`🏦 PAYMENT TRANSACTION - Day ${prev.currentDay}`);
+      console.log(`Card: ${targetCard.name} (${cardId})`);
+      console.log(`Balance before interest: $${targetCard.balance}`);
+      console.log(`Days elapsed: ${daysElapsed}`);
+      console.log(`Daily rate: ${(dailyInterestRate * 100).toFixed(6)}%`);
+      console.log(`Interest accrued: $${interestAccrued}`);
+      console.log(`Payment amount: $${amount}`);
 
       const newCards = prev.cards.map(card => {
         if (card.id === cardId) {
           // Apply interest first, then payment
-          const balanceWithInterest = card.balance + interestAccrued;
+          const balanceWithInterest = Math.round(card.balance + interestAccrued);
           const newBalance = Math.max(0, balanceWithInterest - amount);
-          const wasPaidOff = card.balance > 0 && newBalance === 0;
+          const wasPaidOff = Math.round(card.balance) > 0 && newBalance === 0;
+
+          console.log(`Balance with interest: $${balanceWithInterest}`);
+          console.log(`New balance after payment: $${newBalance}`);
+          console.log(`Card paid off: ${wasPaidOff}`);
 
           // If card was paid off, add to freed minimums
           if (wasPaidOff) {
@@ -131,7 +179,7 @@ export const useGameState = () => {
           }
 
           // Track cumulative payments this month
-          const currentMonth = Math.floor(prev.currentDay / 30);
+          const currentMonth = Math.floor((prev.currentDay - 1) / 30);
           let totalPaymentsThisMonth = card.totalPaymentsThisMonth || 0;
 
           // Reset if new month
@@ -160,13 +208,13 @@ export const useGameState = () => {
         cardId,
         amount,
         interestAccrued,
-        balanceAfter: Math.max(0, targetCard.balance - amount),
+        balanceAfter: Math.max(0, Math.round(targetCard.balance) - amount),
       };
 
       // Check if card was paid off and create milestone
       const newPayoffMilestones = { ...prev.payoffMilestones };
       const cardAfterPayment = newCards.find(card => card.id === cardId);
-      if (cardAfterPayment && targetCard.balance > 0 && cardAfterPayment.balance === 0) {
+      if (cardAfterPayment && Math.round(targetCard.balance) > 0 && cardAfterPayment.balance === 0) {
         newPayoffMilestones[cardId] = {
           day: prev.currentDay,
           totalInterest: prev.totalInterestPaid + interestAccrued,
@@ -205,6 +253,8 @@ export const useGameState = () => {
       const nextPayDay = calculateNextPayDay(prev.currentDay);
       const daysToAdvance = nextPayDay - prev.currentDay;
 
+      console.log(`⏰ ADVANCING TO PAYDAY - From Day ${prev.currentDay} to Day ${nextPayDay} (${daysToAdvance} days)`);
+
       let newTotalInterestPaid = prev.totalInterestPaid;
       let newTotalLateFees = prev.totalLateFees;
 
@@ -214,12 +264,20 @@ export const useGameState = () => {
 
         // Add interest for each day
         const dailyInterestRate = card.interestRate / 100 / 365;
-        const totalInterest = card.balance * dailyInterestRate * daysToAdvance;
-        newCard.balance += totalInterest;
+        const totalInterest = Math.round(card.balance * dailyInterestRate * daysToAdvance);
+        newCard.balance = Math.round(newCard.balance + totalInterest);
+        newCard.lastPaymentDate = nextPayDay; // Update to prevent double counting
         newTotalInterestPaid += totalInterest;
 
+        console.log(`📈 INTEREST ACCRUAL - ${card.name}`);
+        console.log(`  Balance before: $${card.balance}`);
+        console.log(`  Daily rate: ${(dailyInterestRate * 100).toFixed(6)}%`);
+        console.log(`  Days: ${daysToAdvance}`);
+        console.log(`  Interest added: $${totalInterest}`);
+        console.log(`  Balance after: $${newCard.balance}`);
+
         // Reset monthly payment tracking if we've moved to a new month
-        const currentMonth = Math.floor(nextPayDay / 30);
+        const currentMonth = Math.floor((nextPayDay - 1) / 30);
         if (card.currentMonth !== currentMonth) {
           newCard.totalPaymentsThisMonth = 0;
           newCard.currentMonth = currentMonth;
@@ -252,6 +310,8 @@ export const useGameState = () => {
       const nextDue = calculateNextDueDate(prev.cards, prev.currentDay);
       const daysToAdvance = nextDue - prev.currentDay;
 
+      console.log(`⚠️ ADVANCING TO DUE DATE - From Day ${prev.currentDay} to Day ${nextDue} (${daysToAdvance} days)`);
+
       let newTotalInterestPaid = prev.totalInterestPaid;
       let newTotalLateFees = prev.totalLateFees;
 
@@ -260,31 +320,40 @@ export const useGameState = () => {
 
         // Add interest for each day
         const dailyInterestRate = card.interestRate / 100 / 365;
-        const totalInterest = card.balance * dailyInterestRate * daysToAdvance;
-        newCard.balance += totalInterest;
+        const totalInterest = Math.round(card.balance * dailyInterestRate * daysToAdvance);
+        newCard.balance = Math.round(newCard.balance + totalInterest);
+        newCard.lastPaymentDate = nextDue; // Update to prevent double counting
         newTotalInterestPaid += totalInterest;
 
         // Reset monthly payment tracking if we've moved to a new month
-        const currentMonth = Math.floor(nextDue / 30);
+        const currentMonth = Math.floor((nextDue - 1) / 30);
         if (card.currentMonth !== currentMonth) {
           newCard.totalPaymentsThisMonth = 0;
           newCard.currentMonth = currentMonth;
         }
 
         // Check if this card's due date is reached and minimum payment was not made
-        const currentDayOfMonth = nextDue % 30;
+        const currentDayOfMonth = ((nextDue - 1) % 30) + 1;
         if (currentDayOfMonth === card.dueDate &&
-            card.balance > 0 &&
+            Math.round(card.balance) > 0 &&
             (card.lastMinimumPaymentMonth === undefined || card.lastMinimumPaymentMonth < currentMonth)) {
           const lateFee = 35;
-          newCard.balance += lateFee;
+          newCard.balance = Math.round(newCard.balance + lateFee);
           newTotalLateFees += lateFee;
+
+          console.log(`💸 LATE FEE APPLIED - ${card.name}`);
+          console.log(`  Due date: ${card.dueDate}th of month`);
+          console.log(`  Current day of month: ${currentDayOfMonth}`);
+          console.log(`  Current month: ${currentMonth}`);
+          console.log(`  Last min payment month: ${card.lastMinimumPaymentMonth}`);
+          console.log(`  Late fee: $${lateFee}`);
+          console.log(`  New balance: $${newCard.balance}`);
         }
 
         return newCard;
       });
 
-      const gameComplete = newCards.every(card => card.balance < 1);
+      const gameComplete = newCards.every(card => Math.round(card.balance) === 0);
 
       const newState = {
         ...prev,
@@ -305,6 +374,15 @@ export const useGameState = () => {
   }, []);
 
   const resetGame = useCallback(() => {
+    // Clear localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('creditGameState');
+      } catch (error) {
+        console.warn('Failed to clear localStorage:', error);
+      }
+    }
+
     const initialState: GameState = {
       cards: INITIAL_CARDS,
       currentDay: 1,
@@ -329,9 +407,48 @@ export const useGameState = () => {
     setGameState(initialState);
   }, []);
 
+  const payAllDebts = useCallback(() => {
+    setGameState(prev => {
+      const totalDebt = prev.cards.reduce((sum, card) => sum + Math.round(card.balance), 0);
+      if (totalDebt <= prev.totalMoney) {
+        // Pay off all cards completely
+        const newCards = prev.cards.map(card => {
+          const wasPaidOff = card.balance > 0;
+          if (wasPaidOff) {
+            prev.freedMinimums += card.minimumPayment;
+          }
+          return {
+            ...card,
+            balance: 0,
+            lastPaymentDate: prev.currentDay,
+          };
+        });
+
+        const newState = {
+          ...prev,
+          cards: newCards,
+          totalMoney: prev.totalMoney - totalDebt,
+          gameComplete: true,
+          stage: 'complete' as const,
+        };
+
+        // Create daily snapshot
+        newState.dailySnapshots = [...prev.dailySnapshots, createDailySnapshot(newState)];
+        return newState;
+      }
+      return prev;
+    });
+  }, []);
+
+  const getCurrentBalance = useCallback((card: CreditCard) => {
+    return calculateCurrentBalance(card, gameState.currentDay);
+  }, [gameState.currentDay]);
+
   return {
     gameState,
     makePayment,
+    payAllDebts,
+    getCurrentBalance,
     completeMoneyMaking,
     advanceToNextPayday,
     advanceToNextDueDate,

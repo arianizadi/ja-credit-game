@@ -8,15 +8,18 @@ interface CreditCardComponentProps {
   isSelected?: boolean;
   onClick?: () => void;
   showDetails?: boolean;
+  getCurrentBalance?: (card: CreditCard) => number;
 }
 
 export const CreditCardComponent = ({
   card,
   isSelected = false,
   onClick,
-  showDetails = true
+  showDetails = true,
+  getCurrentBalance
 }: CreditCardComponentProps) => {
-  const utilizationPercentage = (card.balance / card.limit) * 100;
+  const currentBalance = getCurrentBalance ? getCurrentBalance(card) : Math.round(card.balance);
+  const utilizationPercentage = (currentBalance / card.limit) * 100;
 
   // Simplified priority indicator for students
   const getPriorityLevel = () => {
@@ -70,7 +73,7 @@ export const CreditCardComponent = ({
             <div className="bg-white/10 rounded-lg p-3">
               <div className="text-center">
                 <div className="text-sm opacity-90">You Owe</div>
-                <div className="text-2xl font-bold">${Math.round(card.balance)}</div>
+                <div className="text-2xl font-bold">${currentBalance}</div>
               </div>
             </div>
 

@@ -275,7 +275,7 @@ function MoneyScene({
 
       {/* Background gradient plane */}
       <mesh position={[0, -12, -8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[60, 60]} />
+        <planeGeometry args={[30, 30]} />
         <meshStandardMaterial
           color="#1e293b"
           opacity={0.9}
@@ -284,19 +284,19 @@ function MoneyScene({
       </mesh>
 
       {/* Side walls for depth */}
-      <mesh position={[-25, 0, -5]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[40, 30]} />
+      <mesh position={[-15, 0, -5]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[20, 30]} />
         <meshStandardMaterial color="#334155" opacity={0.3} transparent />
       </mesh>
-      <mesh position={[25, 0, -5]} rotation={[0, -Math.PI / 2, 0]}>
-        <planeGeometry args={[40, 30]} />
+      <mesh position={[15, 0, -5]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[20, 30]} />
         <meshStandardMaterial color="#334155" opacity={0.3} transparent />
       </mesh>
     </>
   );
 }
 
-export const MoneyMakingGame = ({ onComplete, timeLimit = 30 }: MoneyMakingGameProps) => {
+export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameProps) => {
   const [timeLeft, setTimeLeft] = useState(timeLimit);
   const [moneyEarned, setMoneyEarned] = useState(0);
   const [fallingMoney, setFallingMoney] = useState<FallingMoney3D[]>([]);
@@ -312,9 +312,9 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 30 }: MoneyMakingGameP
     const newMoney: FallingMoney3D = {
       id: Math.random().toString(36).substr(2, 9),
       position: new THREE.Vector3(
-        (Math.random() - 0.5) * 24, // X position from -12 to 12
+        (Math.random() - 0.5) * 12, // X position from -6 to 6 (safely within viewport)
         15, // Start above the screen
-        (Math.random() - 0.5) * 8   // Z position for depth
+        (Math.random() - 0.5) * 6   // Z position for depth (-3 to 3)
       ),
       rotation: new THREE.Euler(
         Math.random() * Math.PI,
@@ -322,9 +322,9 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 30 }: MoneyMakingGameP
         Math.random() * Math.PI
       ),
       velocity: new THREE.Vector3(
-        (Math.random() - 0.5) * 1.5, // Small horizontal drift
-        -(Math.random() * 2 + 3),    // Falling speed (3-5 units/sec)
-        (Math.random() - 0.5) * 0.5  // Small depth movement
+        (Math.random() - 0.5) * 2,   // Slightly more horizontal drift
+        -(Math.random() * 3 + 6),    // Faster falling speed (6-9 units/sec)
+        (Math.random() - 0.5) * 0.8  // More depth movement
       ),
       value: value,
       collected: false,
@@ -395,7 +395,7 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 30 }: MoneyMakingGameP
 
     const spawnInterval = setInterval(() => {
       createFallingMoney();
-    }, 800); // Spawn every 0.8 seconds
+    }, 600); // Spawn every 0.6 seconds (faster spawning)
 
     return () => clearInterval(spawnInterval);
   }, [gameStarted, timeLeft, createFallingMoney]);
@@ -503,7 +503,7 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 30 }: MoneyMakingGameP
       </div>
 
       {/* Time running out warning */}
-      {timeLeft <= 10 && timeLeft > 0 && (
+      {timeLeft <= 5 && timeLeft > 0 && (
         <motion.div
           className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-red-400 text-5xl font-bold z-20 bg-black/50 backdrop-blur-sm rounded-2xl px-8 py-4 pointer-events-none"
           animate={{ scale: [1, 1.1, 1] }}

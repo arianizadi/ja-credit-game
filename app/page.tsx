@@ -12,7 +12,7 @@ import { TutorialModal } from './components/TutorialModal';
 import { EndGameScreen } from './components/EndGameScreen';
 
 export default function Home() {
-  const { gameState, makePayment, completeMoneyMaking, advanceToNextPayday, advanceToNextDueDate, resetGame } = useGameState();
+  const { gameState, makePayment, payAllDebts, getCurrentBalance, completeMoneyMaking, advanceToNextPayday, advanceToNextDueDate, resetGame } = useGameState();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [showPaymentEffects, setShowPaymentEffects] = useState(false);
   const [lastPayment, setLastPayment] = useState({ amount: 0, cardName: '' });
@@ -68,6 +68,16 @@ export default function Home() {
     setShowEndGame(false);
   };
 
+  const handleFinishGameClick = () => {
+    const totalDebt = Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0));
+    if (totalDebt > 0) {
+      // Show alert that they need to finish paying off debt
+      alert("💳 Hold on! You still owe $" + totalDebt + " in debt.\n\n🏢 Go back to work and finish paying off all your credit cards before you can finish the game!");
+      return;
+    }
+    setShowEndGame(true);
+  };
+
   // Show loading screen first
   if (isLoading) {
     return <Cool3DLoadingScreen onComplete={handleLoadingComplete} />;
@@ -106,7 +116,7 @@ export default function Home() {
 
           <div className="text-center">
             <div className="text-2xl sm:text-3xl font-bold text-red-600">
-              ${gameState.cards.reduce((sum, card) => sum + card.balance, 0).toFixed(0)}
+              ${Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0))}
             </div>
             <div className="text-xs sm:text-sm text-gray-500">Total Debt</div>
           </div>
@@ -116,14 +126,29 @@ export default function Home() {
             <div className="text-xs sm:text-sm text-gray-500">Days</div>
           </div>
 
-          <motion.button
-            className="px-4 sm:px-6 py-2 sm:py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-colors text-sm sm:text-base"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowTutorial(true)}
-          >
-            📚 Learn
-          </motion.button>
+          <div className="flex gap-2 sm:gap-3">
+            <motion.button
+              className="px-3 sm:px-4 py-2 sm:py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-colors text-sm sm:text-base"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowTutorial(true)}
+            >
+              📚 Learn
+            </motion.button>
+
+            <motion.button
+              className="px-3 sm:px-4 py-2 sm:py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors text-sm sm:text-base"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                if (confirm('Are you sure you want to reset the game? This will clear all progress and cannot be undone.')) {
+                  resetGame();
+                }
+              }}
+            >
+              🔄 Reset
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Main Game Area */}
@@ -173,11 +198,31 @@ export default function Home() {
                 💰 Next Payday
               </motion.button>
 
+              {/* Pay All Debts button - only show if player has enough money */}
+              {(() => {
+                const totalDebt = Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0));
+                const canPayAll = totalDebt > 0 && gameState.totalMoney >= totalDebt;
+
+                if (canPayAll) {
+                  return (
+                    <motion.button
+                      className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-blue-700 transition-colors"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={payAllDebts}
+                    >
+                      💳 Pay All Debts (${totalDebt})
+                    </motion.button>
+                  );
+                }
+                return null;
+              })()}
+
               <motion.button
                 className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-purple-700 transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setShowEndGame(true)}
+                onClick={handleFinishGameClick}
               >
                 🏁 Finish Game
               </motion.button>
@@ -229,7 +274,7 @@ export default function Home() {
                 className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-purple-700 transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setShowEndGame(true)}
+                onClick={handleFinishGameClick}
               >
                 📊 View Results
               </motion.button>
@@ -250,7 +295,7 @@ export default function Home() {
       {showMoneyGame && (
         <MoneyMakingGame
           onComplete={handleMoneyGameComplete}
-          timeLimit={30}
+          timeLimit={15}
         />
       )}
 
@@ -259,6 +304,9 @@ export default function Home() {
         selectedCard={selectedCard}
         availableMoney={gameState.totalMoney}
         onPayment={handlePayment}
+        onPayAllDebts={payAllDebts}
+        allCards={gameState.cards}
+        getCurrentBalance={getCurrentBalance}
         onClose={handleClosePaymentPanel}
       />
 

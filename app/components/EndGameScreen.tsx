@@ -10,78 +10,184 @@ interface EndGameScreenProps {
   onClose: () => void;
 }
 
-// Simulate optimal avalanche method with exact same cash flow
+// Simulate optimal avalanche method with exact same income schedule
 const simulateOptimalAvalanche = (gameState: GameState) => {
-  // Create virtual cards with same initial conditions
-  const virtualCards = gameState.cards.map(card => ({
-    ...card,
-    balance: card.balance,
-    interestPaid: 0,
-  }));
-
-  // Get the original card states (need initial balances)
+  // Get initial balances from game state constants
   const INITIAL_BALANCES = {
     'visa': 600,
     'mastercard': 400,
     'discover': 300
   };
 
-  // Reset to initial balances for fair comparison
-  virtualCards.forEach(card => {
-    card.balance = INITIAL_BALANCES[card.id as keyof typeof INITIAL_BALANCES] || card.balance;
+  // Create virtual cards starting from initial state
+  const virtualCards = Object.entries(INITIAL_BALANCES).map(([id, balance]) => {
+    const originalCard = gameState.cards.find(c => c.id === id);
+    return {
+      id,
+      name: originalCard?.name || id,
+      balance,
+      interestRate: originalCard?.interestRate || 0,
+      minimumPayment: originalCard?.minimumPayment || 0,
+      dueDate: originalCard?.dueDate || 1,
+      lastPaymentDate: undefined as number | undefined,
+    };
   });
 
   let totalOptimalInterest = 0;
   let currentDay = 1;
-  let paymentLog = [...gameState.paymentLog].sort((a, b) => a.day - b.day);
+  let totalOptimalLateFees = 0;
+  let availableMoney = 200; // Starting money
 
-  // Simulate each payment on the optimal card (highest interest rate with balance)
-  paymentLog.forEach(payment => {
-    // Advance time and accrue interest
-    const daysElapsed = payment.day - currentDay;
+  // Calculate income pattern from player's actual cash flow
+  const paymentsByDay = new Map<number, number>();
+  gameState.paymentLog.forEach(payment => {
+    const existing = paymentsByDay.get(payment.day) || 0;
+    paymentsByDay.set(payment.day, existing + payment.amount);
+  });
+
+  // Infer income schedule: when player had money to make payments
+  const incomeEvents = new Map<number, number>();
+  let runningCash = 200; // Starting money
+
+  Array.from(paymentsByDay.keys()).sort((a, b) => a - b).forEach(day => {
+    const paymentAmount = paymentsByDay.get(day) || 0;
+    if (paymentAmount > runningCash) {
+      // Player must have earned money before this payment
+      const incomeNeeded = paymentAmount - runningCash;
+      incomeEvents.set(day, incomeNeeded);
+      runningCash += incomeNeeded;
+    }
+    runningCash -= paymentAmount;
+  });
+
+  console.log(`💰 INFERRED INCOME SCHEDULE:`);
+  Array.from(incomeEvents.keys()).sort((a, b) => a - b).forEach(day => {
+    console.log(`  Day ${day}: +$${incomeEvents.get(day)}`);
+  });
+
+  const allIncomeEventsAndPaydays = Array.from(incomeEvents.keys()).sort((a, b) => a - b);
+
+  // Determine income frequency pattern (estimate based on when player earned money)
+  const incomePattern = allIncomeEventsAndPaydays.length > 1 ?
+    allIncomeEventsAndPaydays[1] - allIncomeEventsAndPaydays[0] : 15; // Default to every 15 days
+
+  console.log(`🔄 SIMULATING OPTIMAL AVALANCHE WITH INCOME PATTERN`);
+  console.log(`Estimated income every ${incomePattern} days`);
+  console.log(`Starting simulation...`);
+
+  // Simulation loop
+  const maxSimulationDays = 3650; // 10 years max
+  while (virtualCards.some(card => card.balance > 0.01) && currentDay < maxSimulationDays) {
+    // Check if it's an income day
+    if (incomeEvents.has(currentDay)) {
+      availableMoney += incomeEvents.get(currentDay) || 0;
+      console.log(`💰 Day ${currentDay}: Earned $${incomeEvents.get(currentDay)}, total cash: $${availableMoney}`);
+    } else if (currentDay > Math.max(...allIncomeEventsAndPaydays) && currentDay % incomePattern === allIncomeEventsAndPaydays[0] % incomePattern) {
+      // Continue earning income on the same pattern after observed period
+      const typicalIncome = Array.from(incomeEvents.values()).reduce((a, b) => a + b, 0) / incomeEvents.size;
+      availableMoney += typicalIncome;
+      console.log(`💰 Day ${currentDay}: Earned $${typicalIncome} (pattern), total cash: $${availableMoney}`);
+    }
+
+    // Accrue daily interest
     virtualCards.forEach(card => {
       if (card.balance > 0) {
         const dailyRate = card.interestRate / 100 / 365;
-        const interest = card.balance * dailyRate * daysElapsed;
-        card.balance += interest;
-        card.interestPaid += interest;
-        totalOptimalInterest += interest;
+        const dailyInterest = card.balance * dailyRate;
+        card.balance += dailyInterest;
+        totalOptimalInterest += dailyInterest;
       }
     });
 
-    // Find card with highest interest rate that still has balance
-    const targetCard = virtualCards
-      .filter(card => card.balance > 0)
-      .sort((a, b) => b.interestRate - a.interestRate)[0];
+    // Check for late fees on due dates
+    const dayOfMonth = ((currentDay - 1) % 30) + 1;
+    virtualCards.forEach(card => {
+      if (dayOfMonth === card.dueDate && card.balance > 0) {
+        const currentMonth = Math.floor((currentDay - 1) / 30);
+        const lastMinMonth = card.lastPaymentDate ? Math.floor((card.lastPaymentDate - 1) / 30) : -1;
 
-    if (targetCard) {
-      targetCard.balance = Math.max(0, targetCard.balance - payment.amount);
+        if (lastMinMonth < currentMonth) {
+          card.balance += 35; // Late fee
+          totalOptimalLateFees += 35;
+        }
+      }
+    });
+
+    // Apply optimal payment strategy if we have money
+    if (availableMoney > 0) {
+      let remainingMoney = availableMoney;
+
+      // First: pay minimums on all cards with balance
+      const cardsWithBalance = virtualCards.filter(card => card.balance > 0);
+      cardsWithBalance.forEach(card => {
+        const minPayment = Math.min(card.minimumPayment, card.balance, remainingMoney);
+        if (minPayment > 0) {
+          card.balance = Math.max(0, card.balance - minPayment);
+          card.lastPaymentDate = currentDay;
+          remainingMoney -= minPayment;
+          availableMoney -= minPayment;
+        }
+      });
+
+      // Second: put remaining money on highest interest rate card
+      if (remainingMoney > 0) {
+        const highestRateCard = virtualCards
+          .filter(card => card.balance > 0)
+          .sort((a, b) => b.interestRate - a.interestRate)[0];
+
+        if (highestRateCard) {
+          const extraPayment = Math.min(remainingMoney, highestRateCard.balance);
+          if (extraPayment > 0) {
+            highestRateCard.balance = Math.max(0, highestRateCard.balance - extraPayment);
+            highestRateCard.lastPaymentDate = currentDay;
+            availableMoney -= extraPayment;
+            console.log(`💳 Day ${currentDay}: Optimal payment $${extraPayment} to ${highestRateCard.name}`);
+          }
+        }
+      }
     }
 
-    currentDay = payment.day;
-  });
+    currentDay++;
+  }
 
-  // Calculate final day when all cards would be paid off
-  const maxDay = Math.max(...paymentLog.map(p => p.day));
-  const optimalMonths = Math.ceil(maxDay / 30);
+  const optimalMonths = Math.ceil((currentDay - 1) / 30);
+  const totalRemainingDebt = virtualCards.reduce((sum, card) => sum + card.balance, 0);
+
+  console.log(`✅ OPTIMAL SIMULATION COMPLETE`);
+  console.log(`Final day: ${currentDay - 1} (${optimalMonths} months)`);
+  console.log(`Total interest paid: $${Math.round(totalOptimalInterest)}`);
+  console.log(`Total late fees: $${Math.round(totalOptimalLateFees)}`);
+  console.log(`Remaining debt: $${Math.round(totalRemainingDebt)}`);
+  console.log(`Cards final balances:`, virtualCards.map(c => `${c.name}: $${Math.round(c.balance)}`));
 
   return {
-    totalInterestPaid: totalOptimalInterest,
+    totalInterestPaid: Math.round(totalOptimalInterest),
+    totalLateFees: Math.round(totalOptimalLateFees),
     months: optimalMonths,
+    finalDay: currentDay - 1,
     cardsPayoffOrder: virtualCards
-      .filter(card => INITIAL_BALANCES[card.id as keyof typeof INITIAL_BALANCES] > 0)
       .sort((a, b) => b.interestRate - a.interestRate)
       .map(card => ({
         name: card.name,
         interestRate: card.interestRate,
-        interestPaid: card.interestPaid,
+        finalBalance: Math.round(card.balance * 100) / 100,
       })),
   };
 };
 
 // Analyze player's strategy vs optimal
 const analyzePlayerStrategy = (gameState: GameState) => {
+  console.log(`🎯 FINAL GAME ANALYSIS`);
+  console.log(`Player completed game on day ${gameState.currentDay} (${Math.ceil(gameState.currentDay / 30)} months)`);
+  console.log(`Total interest paid: $${gameState.totalInterestPaid}`);
+  console.log(`Total late fees: $${gameState.totalLateFees}`);
+  console.log(`Payment log entries: ${gameState.paymentLog.length}`);
+
   const optimal = simulateOptimalAvalanche(gameState);
+  console.log(`Perfect Avalanche would take: ${optimal.months} months (day ${optimal.finalDay})`);
+  console.log(`Perfect Avalanche interest: $${optimal.totalInterestPaid}`);
+  console.log(`Perfect Avalanche late fees: $${optimal.totalLateFees}`);
+
   const actualMonths = Math.ceil(gameState.currentDay / 30);
 
   // Check if player followed avalanche method
@@ -104,8 +210,13 @@ const analyzePlayerStrategy = (gameState: GameState) => {
     mistakes.push(`Paid $${gameState.totalLateFees.toFixed(0)} in unnecessary late fees`);
   }
 
-  const extraInterest = gameState.totalInterestPaid - optimal.totalInterestPaid;
+  const extraInterest = (gameState.totalInterestPaid + gameState.totalLateFees) - (optimal.totalInterestPaid + (optimal.totalLateFees || 0));
   const extraMonths = actualMonths - optimal.months;
+
+  console.log(`📊 FINAL COMPARISON:`);
+  console.log(`Player: ${actualMonths} months, $${gameState.totalInterestPaid} interest, $${gameState.totalLateFees} late fees`);
+  console.log(`Optimal: ${optimal.months} months, $${optimal.totalInterestPaid} interest, $${optimal.totalLateFees} late fees`);
+  console.log(`Difference: ${extraMonths} months, $${Math.round(extraInterest)} extra cost`);
 
   return {
     isOptimal,
@@ -285,11 +396,11 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Late Fees:</span>
-                    <span className="text-lg font-bold text-green-400">$0</span>
+                    <span className="text-lg font-bold text-green-400">${analysis.optimal.totalLateFees?.toFixed(0) || '0'}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Total Would Be:</span>
-                    <span className="text-lg font-bold text-green-400">${(INITIAL_DEBT + analysis.optimal.totalInterestPaid).toFixed(0)}</span>
+                    <span className="text-lg font-bold text-green-400">${(INITIAL_DEBT + analysis.optimal.totalInterestPaid + (analysis.optimal.totalLateFees || 0)).toFixed(0)}</span>
                   </div>
                 </div>
               </div>
@@ -316,9 +427,14 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
                       {analysis.isOptimal ? 'A+' : 'B'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Money Freed:</span>
-                    <span className="text-lg font-bold text-purple-400">${gameState.freedMinimums}/month</span>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Money Freed:</span>
+                      <span className="text-lg font-bold text-purple-400">${gameState.freedMinimums}/month</span>
+                    </div>
+                    <div className="text-xs text-gray-400 text-center">
+                      Visa $25 + MasterCard $20 + Discover $15 = $60
+                    </div>
                   </div>
                 </div>
               </div>

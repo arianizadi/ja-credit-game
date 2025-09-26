@@ -8,6 +8,9 @@ interface PaymentPanelProps {
   selectedCard: CreditCard | null;
   availableMoney: number;
   onPayment: (amount: number) => void;
+  onPayAllDebts?: () => void;
+  allCards?: CreditCard[];
+  getCurrentBalance?: (card: CreditCard) => number;
   onClose: () => void;
 }
 
@@ -15,6 +18,9 @@ export const PaymentPanel = ({
   selectedCard,
   availableMoney,
   onPayment,
+  onPayAllDebts,
+  allCards = [],
+  getCurrentBalance,
   onClose
 }: PaymentPanelProps) => {
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -22,24 +28,36 @@ export const PaymentPanel = ({
   if (!selectedCard) return null;
 
   const handlePayment = () => {
-    const amount = parseFloat(paymentAmount);
-    // Add small tolerance for floating point precision issues
-    const tolerance = 0.01;
-    if (amount > 0 && amount <= (availableMoney + tolerance) && amount <= (selectedCard.balance + tolerance)) {
+    const amount = Math.round(parseFloat(paymentAmount));
+    if (amount > 0 && amount <= availableMoney && amount <= currentBalance) {
       onPayment(amount);
       setPaymentAmount('');
       onClose();
     }
   };
 
-  const minPayment = Math.min(selectedCard.minimumPayment, selectedCard.balance);
+  // Get current balance including accrued interest
+  const currentBalance = getCurrentBalance ? getCurrentBalance(selectedCard) : Math.round(selectedCard.balance);
+  const minPayment = Math.min(selectedCard.minimumPayment, currentBalance);
+  const totalDebt = allCards.reduce((sum, card) => {
+    const cardBalance = getCurrentBalance ? getCurrentBalance(card) : Math.round(card.balance);
+    return sum + cardBalance;
+  }, 0);
+  const canPayAllDebts = totalDebt > 0 && availableMoney >= totalDebt && onPayAllDebts;
 
   const suggestedAmounts = [
-    { label: 'Minimum', amount: minPayment },
-    { label: 'Half Balance', amount: selectedCard.balance / 2 },
-    { label: 'Full Balance', amount: selectedCard.balance },
-    { label: 'All Money', amount: Math.min(availableMoney, selectedCard.balance) },
+    { label: 'Minimum', amount: Math.round(minPayment) },
+    { label: 'Half Balance', amount: Math.round(currentBalance / 2) },
+    { label: 'Full Balance', amount: currentBalance },
+    { label: 'All Money', amount: Math.min(availableMoney, currentBalance) },
   ];
+
+  if (canPayAllDebts) {
+    suggestedAmounts.push({
+      label: 'All Debts',
+      amount: totalDebt,
+    });
+  }
 
   return (
     <AnimatePresence>
@@ -63,8 +81,8 @@ export const PaymentPanel = ({
 
           <div className="mb-3 sm:mb-4">
             <h3 className="text-base sm:text-lg font-semibold text-gray-700">{selectedCard.name}</h3>
-            <p className="text-sm sm:text-base text-gray-600">Balance: ${selectedCard.balance.toFixed(2)}</p>
-            <p className="text-sm sm:text-base text-gray-600">Available Money: ${availableMoney.toFixed(2)}</p>
+            <p className="text-sm sm:text-base text-gray-600">Balance: ${currentBalance}</p>
+            <p className="text-sm sm:text-base text-gray-600">Available Money: ${Math.round(availableMoney)}</p>
           </div>
 
           <div className="mb-3 sm:mb-4">
@@ -75,11 +93,11 @@ export const PaymentPanel = ({
               type="number"
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900"
               placeholder="Enter amount"
               min="0"
-              max={Math.min(availableMoney, selectedCard.balance)}
-              step="0.01"
+              max={Math.min(availableMoney, currentBalance)}
+              step="1"
             />
           </div>
 
@@ -92,11 +110,18 @@ export const PaymentPanel = ({
                   className="p-2 sm:p-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-xs sm:text-sm"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setPaymentAmount(option.amount.toFixed(2))}
-                  disabled={option.amount > availableMoney || option.amount > selectedCard.balance}
+                  onClick={() => {
+                    if (option.label === 'All Debts' && onPayAllDebts) {
+                      onPayAllDebts();
+                      onClose();
+                    } else {
+                      setPaymentAmount(option.amount.toString());
+                    }
+                  }}
+                  disabled={option.label === 'All Debts' ? false : (option.amount > availableMoney || option.amount > selectedCard.balance)}
                 >
                   <div className="font-semibold">{option.label}</div>
-                  <div className="text-xs">${option.amount.toFixed(2)}</div>
+                  <div className="text-xs">${option.amount}</div>
                 </motion.button>
               ))}
             </div>
@@ -119,8 +144,8 @@ export const PaymentPanel = ({
               disabled={
                 !paymentAmount ||
                 parseFloat(paymentAmount) <= 0 ||
-                parseFloat(paymentAmount) > (availableMoney + 0.01) ||
-                parseFloat(paymentAmount) > (selectedCard.balance + 0.01)
+                Math.round(parseFloat(paymentAmount)) > availableMoney ||
+                Math.round(parseFloat(paymentAmount)) > currentBalance
               }
             >
               Make Payment
