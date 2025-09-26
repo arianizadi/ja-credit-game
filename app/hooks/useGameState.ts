@@ -258,25 +258,40 @@ export const useGameState = () => {
       let newTotalInterestPaid = prev.totalInterestPaid;
       let newTotalLateFees = prev.totalLateFees;
 
-      // Calculate interest for all days until payday
+      // Calculate interest & apply late fees for all days until payday
       const newCards = prev.cards.map(card => {
         let newCard = { ...card };
 
-        // Add interest for each day
+        // 1) Interest accrual (simple interest over the period)
         const dailyInterestRate = card.interestRate / 100 / 365;
         const totalInterest = Math.round(card.balance * dailyInterestRate * daysToAdvance);
         newCard.balance = Math.round(newCard.balance + totalInterest);
         newCard.lastPaymentDate = nextPayDay; // Update to prevent double counting
         newTotalInterestPaid += totalInterest;
 
-        console.log(`📈 INTEREST ACCRUAL - ${card.name}`);
-        console.log(`  Balance before: $${card.balance}`);
-        console.log(`  Daily rate: ${(dailyInterestRate * 100).toFixed(6)}%`);
-        console.log(`  Days: ${daysToAdvance}`);
-        console.log(`  Interest added: $${totalInterest}`);
-        console.log(`  Balance after: $${newCard.balance}`);
+        // 2) Detect any due-dates that occur between prev.currentDay (exclusive) and nextPayDay (inclusive)
+        for (let day = prev.currentDay + 1; day <= nextPayDay; day++) {
+          const dayOfMonth = ((day - 1) % 30) + 1;
+          const monthIndex = Math.floor((day - 1) / 30); // 0-based
 
-        // Reset monthly payment tracking if we've moved to a new month
+          if (
+            dayOfMonth === card.dueDate &&
+            Math.round(newCard.balance) > 0 &&
+            (card.lastMinimumPaymentMonth === undefined || card.lastMinimumPaymentMonth < monthIndex)
+          ) {
+            const lateFee = 35;
+            newCard.balance = Math.round(newCard.balance + lateFee);
+            newTotalLateFees += lateFee;
+
+            console.log(`💸 LATE FEE APPLIED DURING PAYDAY ADVANCE - ${card.name}`);
+            console.log(`  Day advanced to: ${day}`);
+            console.log(`  Month index: ${monthIndex}`);
+            console.log(`  Late fee: $${lateFee}`);
+            console.log(`  New balance: $${newCard.balance}`);
+          }
+        }
+
+        // 3) Reset monthly payment tracking if we've moved to a new month
         const currentMonth = Math.floor((nextPayDay - 1) / 30);
         if (card.currentMonth !== currentMonth) {
           newCard.totalPaymentsThisMonth = 0;

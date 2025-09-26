@@ -10,172 +10,7 @@ interface EndGameScreenProps {
   onClose: () => void;
 }
 
-// Simulate optimal avalanche method with exact same income schedule
-const simulateOptimalAvalanche = (gameState: GameState) => {
-  // Get initial balances from game state constants
-  const INITIAL_BALANCES = {
-    'visa': 600,
-    'mastercard': 400,
-    'discover': 300
-  };
-
-  // Create virtual cards starting from initial state
-  const virtualCards = Object.entries(INITIAL_BALANCES).map(([id, balance]) => {
-    const originalCard = gameState.cards.find(c => c.id === id);
-    return {
-      id,
-      name: originalCard?.name || id,
-      balance,
-      interestRate: originalCard?.interestRate || 0,
-      minimumPayment: originalCard?.minimumPayment || 0,
-      dueDate: originalCard?.dueDate || 1,
-      lastPaymentDate: undefined as number | undefined,
-    };
-  });
-
-  let totalOptimalInterest = 0;
-  let currentDay = 1;
-  let totalOptimalLateFees = 0;
-  let availableMoney = 200; // Starting money
-
-  // Calculate income pattern from player's actual cash flow
-  const paymentsByDay = new Map<number, number>();
-  gameState.paymentLog.forEach(payment => {
-    const existing = paymentsByDay.get(payment.day) || 0;
-    paymentsByDay.set(payment.day, existing + payment.amount);
-  });
-
-  // Infer income schedule: when player had money to make payments
-  const incomeEvents = new Map<number, number>();
-  let runningCash = 200; // Starting money
-
-  Array.from(paymentsByDay.keys()).sort((a, b) => a - b).forEach(day => {
-    const paymentAmount = paymentsByDay.get(day) || 0;
-    if (paymentAmount > runningCash) {
-      // Player must have earned money before this payment
-      const incomeNeeded = paymentAmount - runningCash;
-      incomeEvents.set(day, incomeNeeded);
-      runningCash += incomeNeeded;
-    }
-    runningCash -= paymentAmount;
-  });
-
-  console.log(`💰 INFERRED INCOME SCHEDULE:`);
-  Array.from(incomeEvents.keys()).sort((a, b) => a - b).forEach(day => {
-    console.log(`  Day ${day}: +$${incomeEvents.get(day)}`);
-  });
-
-  const allIncomeEventsAndPaydays = Array.from(incomeEvents.keys()).sort((a, b) => a - b);
-
-  // Determine income frequency pattern (estimate based on when player earned money)
-  const incomePattern = allIncomeEventsAndPaydays.length > 1 ?
-    allIncomeEventsAndPaydays[1] - allIncomeEventsAndPaydays[0] : 15; // Default to every 15 days
-
-  console.log(`🔄 SIMULATING OPTIMAL AVALANCHE WITH INCOME PATTERN`);
-  console.log(`Estimated income every ${incomePattern} days`);
-  console.log(`Starting simulation...`);
-
-  // Simulation loop
-  const maxSimulationDays = 3650; // 10 years max
-  while (virtualCards.some(card => card.balance > 0.01) && currentDay < maxSimulationDays) {
-    // Check if it's an income day
-    if (incomeEvents.has(currentDay)) {
-      availableMoney += incomeEvents.get(currentDay) || 0;
-      console.log(`💰 Day ${currentDay}: Earned $${incomeEvents.get(currentDay)}, total cash: $${availableMoney}`);
-    } else if (currentDay > Math.max(...allIncomeEventsAndPaydays) && currentDay % incomePattern === allIncomeEventsAndPaydays[0] % incomePattern) {
-      // Continue earning income on the same pattern after observed period
-      const typicalIncome = Array.from(incomeEvents.values()).reduce((a, b) => a + b, 0) / incomeEvents.size;
-      availableMoney += typicalIncome;
-      console.log(`💰 Day ${currentDay}: Earned $${typicalIncome} (pattern), total cash: $${availableMoney}`);
-    }
-
-    // Accrue daily interest
-    virtualCards.forEach(card => {
-      if (card.balance > 0) {
-        const dailyRate = card.interestRate / 100 / 365;
-        const dailyInterest = card.balance * dailyRate;
-        card.balance += dailyInterest;
-        totalOptimalInterest += dailyInterest;
-      }
-    });
-
-    // Check for late fees on due dates
-    const dayOfMonth = ((currentDay - 1) % 30) + 1;
-    virtualCards.forEach(card => {
-      if (dayOfMonth === card.dueDate && card.balance > 0) {
-        const currentMonth = Math.floor((currentDay - 1) / 30);
-        const lastMinMonth = card.lastPaymentDate ? Math.floor((card.lastPaymentDate - 1) / 30) : -1;
-
-        if (lastMinMonth < currentMonth) {
-          card.balance += 35; // Late fee
-          totalOptimalLateFees += 35;
-        }
-      }
-    });
-
-    // Apply optimal payment strategy if we have money
-    if (availableMoney > 0) {
-      let remainingMoney = availableMoney;
-
-      // First: pay minimums on all cards with balance
-      const cardsWithBalance = virtualCards.filter(card => card.balance > 0);
-      cardsWithBalance.forEach(card => {
-        const minPayment = Math.min(card.minimumPayment, card.balance, remainingMoney);
-        if (minPayment > 0) {
-          card.balance = Math.max(0, card.balance - minPayment);
-          card.lastPaymentDate = currentDay;
-          remainingMoney -= minPayment;
-          availableMoney -= minPayment;
-        }
-      });
-
-      // Second: put remaining money on highest interest rate card
-      if (remainingMoney > 0) {
-        const highestRateCard = virtualCards
-          .filter(card => card.balance > 0)
-          .sort((a, b) => b.interestRate - a.interestRate)[0];
-
-        if (highestRateCard) {
-          const extraPayment = Math.min(remainingMoney, highestRateCard.balance);
-          if (extraPayment > 0) {
-            highestRateCard.balance = Math.max(0, highestRateCard.balance - extraPayment);
-            highestRateCard.lastPaymentDate = currentDay;
-            availableMoney -= extraPayment;
-            console.log(`💳 Day ${currentDay}: Optimal payment $${extraPayment} to ${highestRateCard.name}`);
-          }
-        }
-      }
-    }
-
-    currentDay++;
-  }
-
-  const optimalMonths = Math.ceil((currentDay - 1) / 30);
-  const totalRemainingDebt = virtualCards.reduce((sum, card) => sum + card.balance, 0);
-
-  console.log(`✅ OPTIMAL SIMULATION COMPLETE`);
-  console.log(`Final day: ${currentDay - 1} (${optimalMonths} months)`);
-  console.log(`Total interest paid: $${Math.round(totalOptimalInterest)}`);
-  console.log(`Total late fees: $${Math.round(totalOptimalLateFees)}`);
-  console.log(`Remaining debt: $${Math.round(totalRemainingDebt)}`);
-  console.log(`Cards final balances:`, virtualCards.map(c => `${c.name}: $${Math.round(c.balance)}`));
-
-  return {
-    totalInterestPaid: Math.round(totalOptimalInterest),
-    totalLateFees: Math.round(totalOptimalLateFees),
-    months: optimalMonths,
-    finalDay: currentDay - 1,
-    cardsPayoffOrder: virtualCards
-      .sort((a, b) => b.interestRate - a.interestRate)
-      .map(card => ({
-        name: card.name,
-        interestRate: card.interestRate,
-        finalBalance: Math.round(card.balance * 100) / 100,
-      })),
-  };
-};
-
-// Analyze player's strategy vs optimal
+// Analyze player's payment strategy and patterns
 const analyzePlayerStrategy = (gameState: GameState) => {
   console.log(`🎯 FINAL GAME ANALYSIS`);
   console.log(`Player completed game on day ${gameState.currentDay} (${Math.ceil(gameState.currentDay / 30)} months)`);
@@ -183,48 +18,49 @@ const analyzePlayerStrategy = (gameState: GameState) => {
   console.log(`Total late fees: $${gameState.totalLateFees}`);
   console.log(`Payment log entries: ${gameState.paymentLog.length}`);
 
-  const optimal = simulateOptimalAvalanche(gameState);
-  console.log(`Perfect Avalanche would take: ${optimal.months} months (day ${optimal.finalDay})`);
-  console.log(`Perfect Avalanche interest: $${optimal.totalInterestPaid}`);
-  console.log(`Perfect Avalanche late fees: $${optimal.totalLateFees}`);
-
   const actualMonths = Math.ceil(gameState.currentDay / 30);
+  const totalPayments = gameState.paymentLog.reduce((sum, p) => sum + p.amount, 0);
+
+  // Analyze payment distribution by card
+  const paymentsByCard = new Map();
+  gameState.paymentLog.forEach(payment => {
+    const existing = paymentsByCard.get(payment.cardId) || { total: 0, count: 0 };
+    paymentsByCard.set(payment.cardId, {
+      total: existing.total + payment.amount,
+      count: existing.count + 1
+    });
+  });
 
   // Check if player followed avalanche method
   const cardsByRate = [...gameState.cards].sort((a, b) => b.interestRate - a.interestRate);
   const highestRateCard = cardsByRate[0];
+  const lowestRateCard = cardsByRate[cardsByRate.length - 1];
 
-  // Check payment log to see if highest rate card got priority
-  const paymentsToHighestRate = gameState.paymentLog.filter(p => p.cardId === highestRateCard.id);
-  const totalPaymentsToHighestRate = paymentsToHighestRate.reduce((sum, p) => sum + p.amount, 0);
-  const totalPayments = gameState.paymentLog.reduce((sum, p) => sum + p.amount, 0);
-
-  const isOptimal = totalPaymentsToHighestRate / totalPayments > 0.6; // 60% of payments went to highest rate
+  const paymentsToHighestRate = paymentsByCard.get(highestRateCard.id)?.total || 0;
+  const paymentsToLowestRate = paymentsByCard.get(lowestRateCard.id)?.total || 0;
+  const avalancheRatio = totalPayments > 0 ? paymentsToHighestRate / totalPayments : 0;
 
   const mistakes = [];
-  if (!isOptimal) {
-    mistakes.push(`Should have focused more on ${highestRateCard.name} (${highestRateCard.interestRate}% APR)`);
+  if (avalancheRatio < 0.4) {
+    mistakes.push(`Should have focused more on ${highestRateCard.name} (${highestRateCard.interestRate}% APR) - the highest rate card`);
   }
 
   if (gameState.totalLateFees > 0) {
-    mistakes.push(`Paid $${gameState.totalLateFees.toFixed(0)} in unnecessary late fees`);
+    const missedPayments = Math.round(gameState.totalLateFees / 35);
+    mistakes.push(`Missed ${missedPayments} minimum payment${missedPayments > 1 ? 's' : ''} resulting in $${gameState.totalLateFees.toFixed(0)} in late fees`);
   }
 
-  const extraInterest = (gameState.totalInterestPaid + gameState.totalLateFees) - (optimal.totalInterestPaid + (optimal.totalLateFees || 0));
-  const extraMonths = actualMonths - optimal.months;
-
-  console.log(`📊 FINAL COMPARISON:`);
-  console.log(`Player: ${actualMonths} months, $${gameState.totalInterestPaid} interest, $${gameState.totalLateFees} late fees`);
-  console.log(`Optimal: ${optimal.months} months, $${optimal.totalInterestPaid} interest, $${optimal.totalLateFees} late fees`);
-  console.log(`Difference: ${extraMonths} months, $${Math.round(extraInterest)} extra cost`);
+  if (paymentsToLowestRate > paymentsToHighestRate && paymentsToLowestRate > 100) {
+    mistakes.push(`Paid more to ${lowestRateCard.name} (${lowestRateCard.interestRate}% APR) than ${highestRateCard.name} (${highestRateCard.interestRate}% APR)`);
+  }
 
   return {
-    isOptimal,
+    avalancheRatio,
     mistakes,
-    extraInterest: Math.max(0, extraInterest),
-    extraMonths: Math.max(0, extraMonths),
-    optimal,
     actualMonths,
+    paymentsByCard,
+    totalPayments,
+    cardsByRate,
   };
 };
 
@@ -310,6 +146,138 @@ const ProgressGraph = ({ dailySnapshots }: { dailySnapshots: any[] }) => {
   );
 };
 
+// Payment Distribution Chart Component
+const PaymentDistributionChart = ({ gameState, analysis }: { gameState: GameState; analysis: any }) => {
+  const cardColors = {
+    visa: '#1a365d',
+    mastercard: '#e53e3e',
+    discover: '#38a169'
+  };
+
+  return (
+    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+      <h3 className="text-xl font-bold text-white mb-4 text-center">💳 Payment Distribution by Card</h3>
+
+      <div className="space-y-4">
+        {analysis.cardsByRate.map((card: any) => {
+          const cardPayments = analysis.paymentsByCard.get(card.id);
+          const percentage = cardPayments ? (cardPayments.total / analysis.totalPayments) * 100 : 0;
+          const paymentCount = cardPayments?.count || 0;
+
+          return (
+            <div key={card.id} className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>{card.name} ({card.interestRate}% APR)</span>
+                <span>${cardPayments?.total.toFixed(0) || '0'} ({paymentCount} payments)</span>
+              </div>
+              <div className="w-full bg-black/30 rounded-full h-3">
+                <div
+                  className="h-3 rounded-full transition-all duration-1000"
+                  style={{
+                    width: `${percentage}%`,
+                    backgroundColor: cardColors[card.id as keyof typeof cardColors] || '#6b7280'
+                  }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 text-right">{percentage.toFixed(1)}%</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
+        <div className="text-sm text-center text-blue-200">
+          {analysis.avalancheRatio > 0.6 ?
+            '🎯 Great job focusing on the highest interest rate card!' :
+            '⚠️ For optimal savings, focus more payments on the highest interest rate card'}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Interest Timeline Chart Component  
+const InterestTimelineChart = ({ gameState }: { gameState: GameState }) => {
+  const dailyInterestData: { day: number; interest: number; cardId: string }[] = [];
+  let cumulativeInterest = 0;
+
+  gameState.paymentLog.forEach(payment => {
+    cumulativeInterest += payment.interestAccrued;
+    dailyInterestData.push({
+      day: payment.day,
+      interest: cumulativeInterest,
+      cardId: payment.cardId
+    });
+  });
+
+  const maxInterest = Math.max(...dailyInterestData.map(d => d.interest), 1);
+  const maxDay = Math.max(...dailyInterestData.map(d => d.day), 1);
+
+  return (
+    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+      <h3 className="text-xl font-bold text-white mb-4 text-center">📈 Interest Accumulation Over Time</h3>
+
+      <div className="relative h-48 bg-black/20 rounded-xl p-4">
+        {/* Y-axis labels */}
+        <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-400">
+          <span>${Math.round(maxInterest)}</span>
+          <span>${Math.round(maxInterest * 0.75)}</span>
+          <span>${Math.round(maxInterest * 0.5)}</span>
+          <span>${Math.round(maxInterest * 0.25)}</span>
+          <span>$0</span>
+        </div>
+
+        {/* Graph area */}
+        <div className="ml-12 h-full relative">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
+            <div
+              key={ratio}
+              className="absolute w-full border-t border-white/20"
+              style={{ top: `${(1 - ratio) * 100}%` }}
+            />
+          ))}
+
+          {/* Data line */}
+          <svg className="absolute inset-0 w-full h-full">
+            <path
+              d={dailyInterestData.map((point, index) => {
+                const x = (point.day / maxDay) * 100;
+                const y = ((maxInterest - point.interest) / maxInterest) * 100;
+                return `${index === 0 ? 'M' : 'L'} ${x}% ${y}%`;
+              }).join(' ')}
+              stroke="#ef4444"
+              strokeWidth="3"
+              fill="none"
+              className="drop-shadow-lg"
+            />
+          </svg>
+        </div>
+
+        {/* X-axis labels */}
+        <div className="absolute bottom-0 left-12 right-0 flex justify-between text-xs text-gray-400 mt-2">
+          <span>Day 1</span>
+          <span>Day {Math.round(maxDay / 2)}</span>
+          <span>Day {maxDay}</span>
+        </div>
+      </div>
+
+      <div className="flex justify-center mt-4 text-sm text-gray-300">
+        <div className="flex items-center">
+          <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+          Cumulative Interest Paid
+        </div>
+      </div>
+
+      <div className="mt-4 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
+        <div className="text-sm text-center text-red-200">
+          Average daily interest: ${(gameState.totalInterestPaid / gameState.currentDay).toFixed(2)}/day
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreenProps) => {
   const [showDetails, setShowDetails] = useState(false);
   const analysis = analyzePlayerStrategy(gameState);
@@ -354,7 +322,7 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
           <div className="p-6 max-h-[65vh] overflow-y-auto">
             {/* Performance Summary */}
             <motion.div
-              className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6"
+              className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
@@ -382,59 +350,32 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
                 </div>
               </div>
 
-              {/* Optimal Results */}
+              {/* Interest & Fees Breakdown */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
-                <h3 className="text-lg font-bold text-white mb-3 text-center">🎯 Perfect Avalanche</h3>
+                <h3 className="text-lg font-bold text-white mb-3 text-center">💰 Cost Breakdown</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm">Interest Would Be:</span>
-                    <span className="text-lg font-bold text-green-400">${analysis.optimal.totalInterestPaid.toFixed(0)}</span>
+                    <span className="text-sm">Original Debt:</span>
+                    <span className="text-lg font-bold text-white">${INITIAL_DEBT.toFixed(0)}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm">Time Would Be:</span>
-                    <span className="text-lg font-bold text-blue-400">{analysis.optimal.months} months</span>
+                    <span className="text-sm">Interest Charges:</span>
+                    <span className="text-lg font-bold text-red-400">+${gameState.totalInterestPaid.toFixed(0)}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Late Fees:</span>
-                    <span className="text-lg font-bold text-green-400">${analysis.optimal.totalLateFees?.toFixed(0) || '0'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Total Would Be:</span>
-                    <span className="text-lg font-bold text-green-400">${(INITIAL_DEBT + analysis.optimal.totalInterestPaid + (analysis.optimal.totalLateFees || 0)).toFixed(0)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Difference */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
-                <h3 className="text-lg font-bold text-white mb-3 text-center">📈 Difference</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Extra Interest:</span>
-                    <span className={`text-lg font-bold ${analysis.extraInterest > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                      {analysis.extraInterest > 0 ? '+' : ''}${analysis.extraInterest.toFixed(0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Extra Time:</span>
-                    <span className={`text-lg font-bold ${analysis.extraMonths > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                      {analysis.extraMonths > 0 ? '+' : ''}{analysis.extraMonths} months
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Strategy Grade:</span>
-                    <span className={`text-lg font-bold ${analysis.isOptimal ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {analysis.isOptimal ? 'A+' : 'B'}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
+                  {gameState.totalLateFees > 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Money Freed:</span>
-                      <span className="text-lg font-bold text-purple-400">${gameState.freedMinimums}/month</span>
+                      <span className="text-sm">Late Fees ({Math.round(gameState.totalLateFees / 35)} missed payments):</span>
+                      <span className="text-lg font-bold text-orange-400">+${gameState.totalLateFees.toFixed(0)}</span>
                     </div>
-                    <div className="text-xs text-gray-400 text-center">
-                      Visa $25 + MasterCard $20 + Discover $15 = $60
+                  )}
+                  <div className="border-t border-white/30 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold">Grand Total:</span>
+                      <span className="text-xl font-bold text-purple-400">${(INITIAL_DEBT + gameState.totalInterestPaid + gameState.totalLateFees).toFixed(0)}</span>
                     </div>
+                  </div>
+                  <div className="text-xs text-center text-gray-300 mt-2">
+                    You paid {(((gameState.totalInterestPaid + gameState.totalLateFees) / INITIAL_DEBT) * 100).toFixed(1)}% extra due to interest and fees
                   </div>
                 </div>
               </div>
@@ -495,16 +436,6 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
                     </div>
                   )}
 
-                  {/* Recommendations */}
-                  <div className="bg-green-500/20 rounded-xl p-3 border border-green-500/30">
-                    <h4 className="text-base font-bold text-green-400 mb-2">💡 Next Steps:</h4>
-                    <p className="text-sm text-white">
-                      {gameState.freedMinimums > 0
-                        ? `You now have an extra $${gameState.freedMinimums}/month! Use this freed money to attack your next highest interest debt or build an emergency fund.`
-                        : 'Always pay the card with the highest interest rate first, regardless of balance. This mathematically saves you the most money!'
-                      }
-                    </p>
-                  </div>
                 </div>
               </motion.div>
             )}
