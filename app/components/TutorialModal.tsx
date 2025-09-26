@@ -72,7 +72,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
           }}
         >
           <motion.div
-            className="bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 rounded-3xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-white/20 backdrop-blur-sm"
+            className="bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 rounded-3xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-white/20 backdrop-blur-sm flex flex-col"
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
@@ -101,7 +101,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
             </div>
 
             {/* Content Area */}
-            <div className="p-6 min-h-[400px]">
+            <div className="p-6 min-h-[400px] overflow-y-auto flex-1">
               {/* Step 0: Welcome */}
               {currentStep === 0 && (
                 <motion.div
@@ -150,7 +150,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
                   transition={{ delay: 0.3 }}
                 >
 
-                  <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-red-500/20 rounded-xl p-4 text-center border border-red-500/30">
                       <div className="text-4xl mb-3">💸</div>
                       <div className="text-2xl font-bold text-red-400 mb-1">$250/year</div>
@@ -188,7 +188,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
                   transition={{ delay: 0.3 }}
                 >
 
-                  <div className="grid grid-cols-3 gap-8 mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 mb-8">
                     <motion.div
                       className="bg-blue-500/20 rounded-xl p-8 text-center border border-blue-500/30"
                       initial={{ scale: 0.9, opacity: 0 }}
@@ -246,7 +246,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
                   transition={{ delay: 0.3 }}
                 >
 
-                  <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     {EXAMPLE_CARDS.map((card, index) => (
                       <motion.div
                         key={card.name}

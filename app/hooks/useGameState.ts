@@ -120,7 +120,9 @@ export const useGameState = () => {
 
       const newCards = prev.cards.map(card => {
         if (card.id === cardId) {
-          const newBalance = Math.max(0, card.balance - amount);
+          // Apply interest first, then payment
+          const balanceWithInterest = card.balance + interestAccrued;
+          const newBalance = Math.max(0, balanceWithInterest - amount);
           const wasPaidOff = card.balance > 0 && newBalance === 0;
 
           // If card was paid off, add to freed minimums
@@ -128,10 +130,25 @@ export const useGameState = () => {
             prev.freedMinimums += card.minimumPayment;
           }
 
+          // Track cumulative payments this month
+          const currentMonth = Math.floor(prev.currentDay / 30);
+          let totalPaymentsThisMonth = card.totalPaymentsThisMonth || 0;
+
+          // Reset if new month
+          if (card.currentMonth !== currentMonth) {
+            totalPaymentsThisMonth = 0;
+          }
+
+          totalPaymentsThisMonth += amount;
+          const lastMinimumPaymentMonth = totalPaymentsThisMonth >= card.minimumPayment ? currentMonth : card.lastMinimumPaymentMonth;
+
           return {
             ...card,
             balance: newBalance,
             lastPaymentDate: prev.currentDay,
+            lastMinimumPaymentMonth,
+            totalPaymentsThisMonth,
+            currentMonth,
           };
         }
         return card;
@@ -163,6 +180,7 @@ export const useGameState = () => {
         ...prev,
         cards: newCards,
         totalMoney: prev.totalMoney - amount,
+        totalInterestPaid: prev.totalInterestPaid + interestAccrued,
         paymentLog: [...prev.paymentLog, paymentLogEntry],
         payoffMilestones: newPayoffMilestones,
       };
@@ -199,6 +217,13 @@ export const useGameState = () => {
         const totalInterest = card.balance * dailyInterestRate * daysToAdvance;
         newCard.balance += totalInterest;
         newTotalInterestPaid += totalInterest;
+
+        // Reset monthly payment tracking if we've moved to a new month
+        const currentMonth = Math.floor(nextPayDay / 30);
+        if (card.currentMonth !== currentMonth) {
+          newCard.totalPaymentsThisMonth = 0;
+          newCard.currentMonth = currentMonth;
+        }
 
         return newCard;
       });
@@ -239,9 +264,18 @@ export const useGameState = () => {
         newCard.balance += totalInterest;
         newTotalInterestPaid += totalInterest;
 
-        // Check if this card's due date is reached and no payment made
+        // Reset monthly payment tracking if we've moved to a new month
+        const currentMonth = Math.floor(nextDue / 30);
+        if (card.currentMonth !== currentMonth) {
+          newCard.totalPaymentsThisMonth = 0;
+          newCard.currentMonth = currentMonth;
+        }
+
+        // Check if this card's due date is reached and minimum payment was not made
         const currentDayOfMonth = nextDue % 30;
-        if (currentDayOfMonth === card.dueDate && card.balance > card.minimumPayment) {
+        if (currentDayOfMonth === card.dueDate &&
+            card.balance > 0 &&
+            (card.lastMinimumPaymentMonth === undefined || card.lastMinimumPaymentMonth < currentMonth)) {
           const lateFee = 35;
           newCard.balance += lateFee;
           newTotalLateFees += lateFee;

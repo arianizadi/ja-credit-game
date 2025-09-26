@@ -8,6 +8,9 @@ export interface CreditCard {
   dueDate: number; // Day of month (1-31)
   color: string;
   lastPaymentDate?: number; // Days since game start
+  lastMinimumPaymentMonth?: number; // Track which month minimum payment was made
+  totalPaymentsThisMonth?: number; // Track total payments made this month
+  currentMonth?: number; // Track current month for payment totals
 }
 
 export type GameStage = 'money-making' | 'debt-paying' | 'complete';

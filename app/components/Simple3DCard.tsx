@@ -92,7 +92,7 @@ export const Simple3DCard = ({ card, isSelected, onClick }: Simple3DCardProps) =
 
   return (
     <motion.div
-      className={`w-80 h-64 cursor-pointer rounded-xl text-white shadow-lg relative overflow-hidden ${isSelected ? 'ring-4 ring-blue-400' : ''
+      className={`w-full max-w-sm sm:w-80 h-56 sm:h-64 cursor-pointer rounded-xl text-white shadow-lg relative overflow-hidden ${isSelected ? 'ring-4 ring-blue-400' : ''
         }`}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
@@ -111,33 +111,33 @@ export const Simple3DCard = ({ card, isSelected, onClick }: Simple3DCardProps) =
       />
 
       {/* Card Content */}
-      <div className="relative z-10 p-6 h-full flex flex-col justify-between">
+      <div className="relative z-10 p-4 sm:p-6 h-full flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xl font-bold">{card.name}</h3>
+            <h3 className="text-lg sm:text-xl font-bold">{card.name}</h3>
             <div className="px-2 py-1 rounded-full bg-white/20 text-xs font-bold">
               {priority}
             </div>
           </div>
-          <p className="text-sm opacity-90">Click to make a payment</p>
+          <p className="text-xs sm:text-sm opacity-90">Click to make a payment</p>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {/* Main Balance */}
-          <div className="bg-white/10 rounded-lg p-3 text-center">
-            <div className="text-sm opacity-90">You Owe</div>
-            <div className="text-2xl font-bold">${Math.round(card.balance)}</div>
+          <div className="bg-white/10 rounded-lg p-2 sm:p-3 text-center">
+            <div className="text-xs sm:text-sm opacity-90">You Owe</div>
+            <div className="text-xl sm:text-2xl font-bold">${Math.round(card.balance)}</div>
           </div>
 
           {/* Interest and Min Payment */}
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="bg-white/10 rounded-lg p-2 text-center">
               <div className="opacity-90 text-xs">Interest Rate</div>
-              <div className="font-bold text-base">{card.interestRate}%</div>
+              <div className="font-bold text-sm sm:text-base">{card.interestRate}%</div>
             </div>
             <div className="bg-white/10 rounded-lg p-2 text-center">
               <div className="opacity-90 text-xs">Min Payment</div>
-              <div className="font-bold text-base">${card.minimumPayment}</div>
+              <div className="font-bold text-sm sm:text-base">${card.minimumPayment}</div>
             </div>
           </div>
         </div>
