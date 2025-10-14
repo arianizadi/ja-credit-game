@@ -3,8 +3,28 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Text, Environment } from '@react-three/drei';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
+
+// FPS Counter Component
+function FPSCounter({ onUpdate }: { onUpdate: (fps: number) => void }) {
+  const frameCount = useRef(0);
+  const lastTime = useRef(performance.now());
+
+  useFrame(() => {
+    frameCount.current++;
+    const currentTime = performance.now();
+
+    if (currentTime >= lastTime.current + 1000) {
+      const fps = Math.round(frameCount.current * 1000 / (currentTime - lastTime.current));
+      onUpdate(fps);
+      frameCount.current = 0;
+      lastTime.current = currentTime;
+    }
+  });
+
+  return null;
+}
 
 interface FallingMoney3D {
   id: string;
@@ -75,7 +95,7 @@ function MoneyBill({
       scale={hovered ? [1.3, 1.3, 1.3] : [1, 1, 1]}
     >
       {/* Money bill geometry - more realistic proportions */}
-      <boxGeometry args={[3, 1.4, 0.05]} />
+      <boxGeometry args={[4.5, 2.1, 0.05]} />
       <meshStandardMaterial
         color={getMoneyColor(money.value)}
         metalness={0.1}
@@ -87,7 +107,7 @@ function MoneyBill({
       {/* Front side text */}
       <Text
         position={[0, 0, 0.026]}
-        fontSize={0.35}
+        fontSize={0.6}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -99,50 +119,12 @@ function MoneyBill({
       {/* Back side text (flipped) */}
       <Text
         position={[0, 0, -0.026]}
-        fontSize={0.35}
+        fontSize={0.6}
         color="white"
         anchorX="center"
         anchorY="middle"
         fontWeight="bold"
         rotation={[0, Math.PI, 0]}
-      >
-        ${money.value}
-      </Text>
-
-      {/* Corner decorations to look more like real money */}
-      <Text
-        position={[-1.2, 0.5, 0.026]}
-        fontSize={0.15}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-      >
-        ${money.value}
-      </Text>
-      <Text
-        position={[1.2, 0.5, 0.026]}
-        fontSize={0.15}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-      >
-        ${money.value}
-      </Text>
-      <Text
-        position={[-1.2, -0.5, 0.026]}
-        fontSize={0.15}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-      >
-        ${money.value}
-      </Text>
-      <Text
-        position={[1.2, -0.5, 0.026]}
-        fontSize={0.15}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
       >
         ${money.value}
       </Text>
@@ -159,7 +141,7 @@ function CollectionEffect({ position, onComplete }: { position: THREE.Vector3; o
     if (!groupRef.current) return;
 
     // Create particle explosion
-    const particleCount = 25;
+    const particleCount = 10;
     for (let i = 0; i < particleCount; i++) {
       const particle = new THREE.Mesh(
         new THREE.SphereGeometry(0.08),
@@ -211,13 +193,15 @@ function MoneyScene({
   timeLeft,
   onMoneyCollect,
   fallingMoney,
-  collectionEffects
+  collectionEffects,
+  onFpsUpdate
 }: {
   gameStarted: boolean;
   timeLeft: number;
   onMoneyCollect: (id: string) => void;
   fallingMoney: FallingMoney3D[];
   collectionEffects: { id: string; position: THREE.Vector3 }[];
+  onFpsUpdate: (fps: number) => void;
 }) {
   const { camera } = useThree();
 
@@ -242,20 +226,15 @@ function MoneyScene({
 
   return (
     <>
+      {/* FPS Counter */}
+      <FPSCounter onUpdate={onFpsUpdate} />
+
       {/* Lighting setup for better visibility */}
-      <ambientLight intensity={0.7} />
+      <ambientLight intensity={0.8} />
       <directionalLight
         position={[15, 15, 10]}
         intensity={1.2}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
       />
-      <pointLight position={[-10, 10, -10]} intensity={0.6} color="#fbbf24" />
-      <pointLight position={[10, 10, 10]} intensity={0.4} color="#10b981" />
-
-      {/* Environment for reflections */}
-      <Environment preset="city" />
 
       {/* Falling money */}
       {fallingMoney.map((money) => (
@@ -274,7 +253,7 @@ function MoneyScene({
       ))}
 
       {/* Background gradient plane */}
-      <mesh position={[0, -12, -8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, -12, -8]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[30, 30]} />
         <meshStandardMaterial
           color="#1e293b"
@@ -303,6 +282,7 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameP
   const [gameStarted, setGameStarted] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
   const [collectionEffects, setCollectionEffects] = useState<{ id: string; position: THREE.Vector3 }[]>([]);
+  const [fps, setFps] = useState(0);
 
   const moneyValues = [10, 25, 50, 100]; // Higher values for better gameplay
 
@@ -457,8 +437,13 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameP
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
+      {/* FPS Display */}
+      <div className="absolute top-4 right-4 text-white text-xs opacity-60 z-10">
+        {fps} FPS
+      </div>
+
       {/* Game UI */}
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-center text-white z-10">
+      <div className="absolute top-12 left-4 right-4 flex justify-between items-center text-white z-10">
         <div className="bg-black/30 backdrop-blur-sm rounded-xl px-6 py-3 border border-white/20">
           <div className="text-sm opacity-80">Time Left</div>
           <div className="text-3xl font-bold">{timeLeft}s</div>
@@ -477,7 +462,6 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameP
 
       {/* 3D Canvas */}
       <Canvas
-        shadows
         camera={{ position: [0, 8, 20], fov: 60 }}
         style={{ background: 'transparent' }}
       >
@@ -488,6 +472,7 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameP
             onMoneyCollect={collectMoney}
             fallingMoney={fallingMoney}
             collectionEffects={collectionEffects}
+            onFpsUpdate={setFps}
           />
         </Suspense>
       </Canvas>
@@ -502,16 +487,6 @@ export const MoneyMakingGame = ({ onComplete, timeLimit = 15 }: MoneyMakingGameP
         </div>
       </div>
 
-      {/* Time running out warning */}
-      {timeLeft <= 5 && timeLeft > 0 && (
-        <motion.div
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-red-400 text-5xl font-bold z-20 bg-black/50 backdrop-blur-sm rounded-2xl px-8 py-4 pointer-events-none"
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
-        >
-          HURRY! {timeLeft}s LEFT!
-        </motion.div>
-      )}
     </motion.div>
   );
 };
