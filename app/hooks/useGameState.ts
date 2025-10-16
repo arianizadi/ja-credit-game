@@ -21,7 +21,7 @@ const INITIAL_CARDS: CreditCard[] = [
     limit: 2000,
     interestRate: 23,
     minimumPayment: 20,
-    dueDate: 5,
+    dueDate: 15,
     color: '#e53e3e',
   },
   {
@@ -31,7 +31,7 @@ const INITIAL_CARDS: CreditCard[] = [
     limit: 1500,
     interestRate: 16,
     minimumPayment: 15,
-    dueDate: 25,
+    dueDate: 15,
     color: '#38a169',
   },
 ];
