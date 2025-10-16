@@ -287,7 +287,7 @@ export const EndGameScreen = ({ gameState, onPlayAgain, onClose }: EndGameScreen
     return () => clearTimeout(timer);
   }, []);
 
-  const INITIAL_DEBT = 950; 
+  const INITIAL_DEBT = 1050; // 350 + 400 + 300
   const actualMonths = Math.ceil(gameState.currentDay / 30);
 
   return (

@@ -7,7 +7,7 @@ const INITIAL_CARDS: CreditCard[] = [
   {
     id: 'visa',
     name: 'Visa Card',
-    balance: 600,
+    balance: 350,
     limit: 3000,
     interestRate: 19,
     minimumPayment: 25,
