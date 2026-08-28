@@ -1,331 +1,304 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { useGameState } from './hooks/useGameState';
-import { Simple3DCard } from './components/Simple3DCard';
-import { PaymentPanel } from './components/PaymentPanel';
-import { PaymentEffects } from './components/PaymentEffects';
-import { MoneyMakingGame } from './components/MoneyMakingGame';
-import { Cool3DLoadingScreen } from './components/Cool3DLoadingScreen';
-import { TutorialModal } from './components/TutorialModal';
-import { EndGameScreen } from './components/EndGameScreen';
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
+import { Background } from "./components/Background";
+import { CardArt } from "./components/CardArt";
+import { EndScreen } from "./components/EndScreen";
+import { PaydayGame } from "./components/PaydayGame";
+import { PaymentModal } from "./components/PaymentModal";
+import { Timeline } from "./components/Timeline";
+import { Tutorial } from "./components/Tutorial";
+import {
+  dayOfMonth,
+  fmtMoney,
+  minimumDueNow,
+  monthName,
+  nextPaydayAfter,
+  totalDebt,
+} from "./game/engine";
+import { useGameState } from "./hooks/useGameState";
+
+const TUTORIAL_SEEN_KEY = "ja-credit-game-tutorial-seen";
 
 export default function Home() {
-  const { gameState, makePayment, payAllDebts, getCurrentBalance, completeMoneyMaking, advanceToNextPayday, advanceToNextDueDate, resetGame } = useGameState();
+  const {
+    state,
+    hydrated,
+    makePayment,
+    payEverything,
+    collectPaycheck,
+    advanceToPayday,
+    resetGame,
+  } = useGameState();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [showPaymentEffects, setShowPaymentEffects] = useState(false);
-  const [lastPayment, setLastPayment] = useState({ amount: 0, cardName: '' });
-  const [isLoading, setIsLoading] = useState(true);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showMoneyGame, setShowMoneyGame] = useState(false);
-  const [showEndGame, setShowEndGame] = useState(false);
+  const [showPaydayGame, setShowPaydayGame] = useState(false);
 
-  const selectedCard = gameState.cards.find(card => card.id === selectedCardId) || null;
-
-  // Show end game screen when game is complete
+  // First visit: show the tutorial once.
   useEffect(() => {
-    if (gameState.gameComplete && !showEndGame) {
-      setShowEndGame(true);
+    if (!hydrated) return;
+    try {
+      if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) setShowTutorial(true);
+    } catch {
+      setShowTutorial(true);
     }
-  }, [gameState.gameComplete, showEndGame]);
+  }, [hydrated]);
 
-  const handleLoadingComplete = () => {
-    setIsLoading(false);
-    setShowTutorial(true);
-  };
-
-  const handleTutorialClose = () => {
+  const closeTutorial = () => {
     setShowTutorial(false);
-  };
-
-  const handleMoneyGameComplete = (earnedAmount: number) => {
-    completeMoneyMaking(earnedAmount);
-    setShowMoneyGame(false);
-  };
-
-  const handlePayment = (amount: number) => {
-    if (selectedCardId) {
-      const card = gameState.cards.find(c => c.id === selectedCardId);
-      if (card) {
-        makePayment(selectedCardId, amount);
-        setLastPayment({ amount, cardName: card.name });
-        setShowPaymentEffects(true);
-      }
+    try {
+      localStorage.setItem(TUTORIAL_SEEN_KEY, "1");
+    } catch {
+      /* ignore */
     }
   };
 
-  const handleClosePaymentPanel = () => {
-    setSelectedCardId(null);
-  };
+  const debt = totalDebt(state);
+  const selectedCard = state.cards.find((c) => c.id === selectedCardId) ?? null;
+  const highestAprId = useMemo(() => {
+    const open = state.cards.filter((c) => c.balance > 0);
+    if (open.length === 0) return null;
+    return open.reduce((a, b) => (b.apr > a.apr ? b : a)).id;
+  }, [state.cards]);
 
-  const handleEndGamePlayAgain = () => {
-    resetGame();
-    setShowEndGame(false);
-  };
+  const payday = nextPaydayAfter(state.day);
+  const dailyBurn = state.cards.reduce(
+    (sum, c) => sum + (c.balance * c.apr) / 365,
+    0,
+  );
+  const minsOutstanding = state.cards.reduce(
+    (sum, c) => sum + minimumDueNow(c),
+    0,
+  );
 
-  const handleEndGameClose = () => {
-    setShowEndGame(false);
-  };
-
-  const handleFinishGameClick = () => {
-    const totalDebt = Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0));
-    if (totalDebt > 0) {
-      // Show alert that they need to finish paying off debt
-      alert("💳 Hold on! You still owe $" + totalDebt + " in debt.\n\n🏢 Go back to work and finish paying off all your credit cards before you can finish the game!");
-      return;
-    }
-    setShowEndGame(true);
-  };
-
-  // Show loading screen first
-  if (isLoading) {
-    return <Cool3DLoadingScreen onComplete={handleLoadingComplete} />;
+  if (!hydrated) {
+    return <main className="min-h-dvh" />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      {/* Tutorial Modal */}
-      <TutorialModal isOpen={showTutorial} onClose={handleTutorialClose} />
+    <main className="min-h-dvh pb-16">
+      <Background />
+      <Tutorial open={showTutorial} onClose={closeTutorial} />
 
-      <div className="container mx-auto px-4 py-4 sm:py-8">
-        {/* Simple Header */}
-        <motion.div
-          className="text-center mb-6 sm:mb-12"
-          initial={{ opacity: 0, y: -20 }}
+      <div className="mx-auto max-w-5xl px-4 pt-6 sm:pt-10">
+        {/* header */}
+        <motion.header
+          className="mb-6 flex flex-wrap items-center justify-between gap-3"
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-800 mb-2">
-            💳 Debt Avalanche Game
-          </h1>
-          <p className="text-lg sm:text-xl text-gray-600">
-            Pay high interest cards first!
-          </p>
-        </motion.div>
-
-        {/* Simple Stats Bar */}
-        <motion.div
-          className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-8 mb-6 sm:mb-12 bg-white rounded-2xl p-4 sm:p-6 shadow-lg max-w-4xl mx-auto"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-green-600">${Math.round(gameState.totalMoney)}</div>
-            <div className="text-xs sm:text-sm text-gray-500">Your Money</div>
+          <div>
+            <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
+              Debt{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                Avalanche
+              </span>
+            </h1>
+            <p className="text-sm text-[color:var(--ink-secondary)]">
+              {monthName(state.day)} {dayOfMonth(state.day)} · day {state.day}
+            </p>
           </div>
-
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-red-600">
-              ${Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0))}
-            </div>
-            <div className="text-xs sm:text-sm text-gray-500">Total Debt</div>
-          </div>
-
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-blue-600">{gameState.currentDay}</div>
-            <div className="text-xs sm:text-sm text-gray-500">Days</div>
-          </div>
-
-          <div className="flex gap-2 sm:gap-3">
-            <motion.button
-              className="px-3 sm:px-4 py-2 sm:py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-colors text-sm sm:text-base"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+          <div className="flex gap-2">
+            <button
+              type="button"
               onClick={() => setShowTutorial(true)}
+              className="glass rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--ink-secondary)] hover:bg-white/10"
             >
-              📚 Learn
-            </motion.button>
-
-            <motion.button
-              className="px-3 sm:px-4 py-2 sm:py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors text-sm sm:text-base"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              How to play
+            </button>
+            <button
+              type="button"
               onClick={() => {
-                if (confirm('Are you sure you want to reset the game? This will clear all progress and cannot be undone.')) {
+                if (
+                  window.confirm(
+                    "Start over? Your current game will be erased.",
+                  )
+                )
                   resetGame();
-                }
               }}
+              className="glass rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--ink-secondary)] hover:bg-white/10"
             >
-              🔄 Reset
-            </motion.button>
+              Reset
+            </button>
+          </div>
+        </motion.header>
+
+        {/* stat tiles */}
+        <motion.div
+          className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
+          <div className="glass rounded-2xl p-4">
+            <div className="text-[11px] uppercase tracking-wider text-[color:var(--ink-muted)]">
+              Cash
+            </div>
+            <div className="mono text-2xl font-extrabold text-emerald-300">
+              {fmtMoney(state.money)}
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-4">
+            <div className="text-[11px] uppercase tracking-wider text-[color:var(--ink-muted)]">
+              Total debt
+            </div>
+            <div className="mono text-2xl font-extrabold text-rose-300">
+              {fmtMoney(debt)}
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-4">
+            <div className="text-[11px] uppercase tracking-wider text-[color:var(--ink-muted)]">
+              Interest paid
+            </div>
+            <div className="mono text-2xl font-extrabold text-[color:var(--ink)]">
+              {fmtMoney(state.totalInterest, { alwaysCents: true })}
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-4">
+            <div className="text-[11px] uppercase tracking-wider text-[color:var(--ink-muted)]">
+              Costing you daily
+            </div>
+            <div className="mono text-2xl font-extrabold text-amber-300">
+              {fmtMoney(Math.round(dailyBurn), { alwaysCents: true })}
+            </div>
           </div>
         </motion.div>
 
-        {/* Main Game Area */}
-        {gameState.stage === 'debt-paying' && (
-          <motion.div
-            className="text-center mb-6 sm:mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4">
-              Which card will you pay? 🤔
-            </h2>
-            <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 sm:p-4 mb-6 sm:mb-8 max-w-2xl mx-auto">
-              <p className="text-base sm:text-lg font-semibold text-yellow-800">
-                🏔️ Debt Avalanche Strategy: Pay the highest interest rate first!
-              </p>
-            </div>
+        {/* timeline */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Timeline day={state.day} cards={state.cards} />
+        </motion.div>
 
-            {/* Simple 3D Cards */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap justify-center gap-4 sm:gap-8">
-              {gameState.cards.map((card, index) => (
-                <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, y: 50 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.2 }}
-                  className="w-full sm:w-auto flex justify-center"
-                >
-                  <Simple3DCard
-                    card={card}
-                    isSelected={selectedCardId === card.id}
-                    onClick={() => setSelectedCardId(card.id)}
-                  />
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Simple Action Buttons */}
-            <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mt-6 sm:mt-8">
-              <motion.button
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-green-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-green-700 transition-colors"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={advanceToNextPayday}
-                disabled={gameState.gameComplete}
-              >
-                💰 Next Payday
-              </motion.button>
-
-              {/* Pay All Debts button - only show if player has enough money */}
-              {(() => {
-                const totalDebt = Math.round(gameState.cards.reduce((sum, card) => sum + card.balance, 0));
-                const canPayAll = totalDebt > 0 && gameState.totalMoney >= totalDebt;
-
-                if (canPayAll) {
-                  return (
-                    <motion.button
-                      className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-blue-700 transition-colors"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={payAllDebts}
-                    >
-                      💳 Pay All Debts (${totalDebt})
-                    </motion.button>
-                  );
-                }
-                return null;
-              })()}
-
-              <motion.button
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-purple-700 transition-colors"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleFinishGameClick}
-              >
-                🏁 Finish Game
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Money Game Instructions */}
-        {gameState.stage === 'money-making' && (
-          <motion.div
-            className="text-center px-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div className="text-6xl sm:text-8xl mb-4 sm:mb-6">💰</div>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3 sm:mb-4 text-gray-800">
-              Payday Time!
-            </h2>
-            <p className="text-lg sm:text-xl mb-6 sm:mb-8 text-gray-600">
-              Click the falling money to earn your paycheck
-            </p>
-            <motion.button
-              className="px-8 sm:px-12 py-4 sm:py-6 bg-green-600 text-white rounded-2xl font-bold text-lg sm:text-2xl hover:bg-green-700 transition-colors shadow-lg"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowMoneyGame(true)}
+        {/* stage content */}
+        <AnimatePresence mode="wait">
+          {state.stage === "earn" && (
+            <motion.section
+              key="earn"
+              className="mt-10 text-center"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
             >
-              Start Earning! 💵
-            </motion.button>
-          </motion.div>
-        )}
+              <h2 className="mb-2 text-3xl font-extrabold">
+                It&apos;s payday 💵
+              </h2>
+              <p className="mx-auto mb-6 max-w-md text-[color:var(--ink-secondary)]">
+                Work your shift to collect your paycheck — then put it to work
+                against your debt.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowPaydayGame(true)}
+                className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-10 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-500/25 transition-transform hover:scale-105 active:scale-95"
+              >
+                Collect paycheck →
+              </button>
+            </motion.section>
+          )}
 
-        {/* Game Complete - Simple message when end game screen is closed */}
-        {gameState.gameComplete && !showEndGame && (
-          <motion.div
-            className="text-center px-4"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="text-6xl sm:text-8xl mb-4 sm:mb-6">🎉</div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-3 sm:mb-4">
-              Congratulations!
-            </h2>
-            <p className="text-lg sm:text-xl text-gray-600 mb-6 sm:mb-8">
-              You mastered the Debt Avalanche Method!
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
-              <motion.button
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-purple-700 transition-colors"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleFinishGameClick}
-              >
-                📊 View Results
-              </motion.button>
-              <motion.button
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-600 text-white rounded-xl font-bold text-base sm:text-lg hover:bg-blue-700 transition-colors"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={resetGame}
-              >
-                🚀 Play Again
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
+          {state.stage === "pay" && (
+            <motion.section
+              key="pay"
+              className="mt-8"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+            >
+              <div className="mb-6 text-center">
+                <h2 className="text-2xl font-extrabold sm:text-3xl">
+                  Which card do you pay?
+                </h2>
+                <p className="mt-1 text-sm text-[color:var(--ink-secondary)]">
+                  🏔️ Avalanche tip: minimums on everything, then hammer the
+                  highest APR.
+                  {minsOutstanding > 0 && (
+                    <>
+                      {" "}
+                      Minimums still due:{" "}
+                      <strong className="mono text-amber-300">
+                        {fmtMoney(minsOutstanding)}
+                      </strong>
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 justify-items-center gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {state.cards.map((card, i) => (
+                  <motion.div
+                    key={card.id}
+                    className="w-full max-w-[352px]"
+                    initial={{ opacity: 0, y: 24 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.08 * i }}
+                  >
+                    <CardArt
+                      card={card}
+                      highestApr={card.id === highestAprId}
+                      minDueSoon={minimumDueNow(card) > 0}
+                      selected={selectedCardId === card.id}
+                      onClick={() => setSelectedCardId(card.id)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={advanceToPayday}
+                  className="w-full rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 px-8 py-3.5 font-bold text-white shadow-lg shadow-blue-500/25 transition-transform hover:scale-[1.03] active:scale-[0.97] sm:w-auto"
+                >
+                  Skip to next payday ({dayOfMonth(payday)}
+                  {dayOfMonth(payday) === 1 ? "st" : "th"}) →
+                </button>
+                {debt > 0 && state.money >= debt && (
+                  <button
+                    type="button"
+                    onClick={payEverything}
+                    className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-8 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.03] active:scale-[0.97] sm:w-auto"
+                  >
+                    Pay everything off · {fmtMoney(debt)} 🏆
+                  </button>
+                )}
+              </div>
+              <p className="mt-3 text-center text-xs text-[color:var(--ink-muted)]">
+                Skipping ahead lets interest accrue daily — and any missed
+                minimum on the way costs a $35 late fee.
+              </p>
+            </motion.section>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Money Making Game */}
-      {showMoneyGame && (
-        <MoneyMakingGame
-          onComplete={handleMoneyGameComplete}
-          timeLimit={15}
-        />
-      )}
+      {/* overlays */}
+      <AnimatePresence>
+        {showPaydayGame && (
+          <PaydayGame
+            onComplete={(cents) => {
+              collectPaycheck(cents);
+              setShowPaydayGame(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Payment Panel */}
-      <PaymentPanel
-        selectedCard={selectedCard}
-        availableMoney={gameState.totalMoney}
-        onPayment={handlePayment}
-        onPayAllDebts={payAllDebts}
-        allCards={gameState.cards}
-        getCurrentBalance={getCurrentBalance}
-        onClose={handleClosePaymentPanel}
+      <PaymentModal
+        card={selectedCard}
+        money={state.money}
+        day={state.day}
+        onPay={(cents) => selectedCardId && makePayment(selectedCardId, cents)}
+        onClose={() => setSelectedCardId(null)}
       />
 
-      {/* Payment Effects */}
-      <PaymentEffects
-        isVisible={showPaymentEffects}
-        amount={lastPayment.amount}
-        cardName={lastPayment.cardName}
-        onComplete={() => setShowPaymentEffects(false)}
-      />
-
-      {/* End Game Screen */}
-      {showEndGame && (
-        <EndGameScreen
-          gameState={gameState}
-          onPlayAgain={handleEndGamePlayAgain}
-          onClose={handleEndGameClose}
-        />
+      {state.stage === "complete" && (
+        <EndScreen state={state} onPlayAgain={resetGame} />
       )}
-    </div>
+    </main>
   );
 }

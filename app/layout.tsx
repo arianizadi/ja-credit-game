@@ -14,12 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Credit Card Strategy Game",
-  description: "Learn smart debt payment strategies while having fun!",
+  title: "Debt Avalanche — Credit Card Strategy Game",
+  description:
+    "Pay off three credit cards, dodge late fees, and master the debt avalanche method.",
 };
 
 export const viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
